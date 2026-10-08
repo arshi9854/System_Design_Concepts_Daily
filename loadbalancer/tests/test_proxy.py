@@ -137,6 +137,37 @@ class ProxyIntegrationTests(unittest.TestCase):
 
         self.assertEqual(set(responses), expected)
 
+    def test_slow_backend_fails_over(self):
+        expected_bodies = {
+            b"<h1>Hello from backend on port 8081</h1>",
+            b"<h1>Hello from backend on port 8083</h1>",
+        }
+
+        for _ in range(3):
+            with urllib.request.urlopen(
+                "http://localhost:8080/slow",
+                timeout=4,
+            ) as response:
+                self.assertEqual(response.status, 200)
+                self.assertIn(response.read(), expected_bodies)
+
+    def test_z_all_backends_down_returns_503(self):
+        # The first three processes are the backend servers.
+        for process in PROCESSES[:3]:
+            process.terminate()
+
+        for process in PROCESSES[:3]:
+            process.wait(timeout=3)
+
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(
+                "http://localhost:8080/",
+                timeout=5,
+            )
+
+        with caught.exception as response:
+            self.assertEqual(response.code, 503)
+            self.assertEqual(response.read(), b"All servers are down")
 
 if __name__ == "__main__":
     unittest.main()
