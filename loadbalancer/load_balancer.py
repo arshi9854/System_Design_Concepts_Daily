@@ -19,7 +19,31 @@ class LoadBalancer(BaseHTTPRequestHandler):
     current = 0
     routing_lock = threading.Lock()
 
+    max_inflight = int(os.environ.get("MAX_INFLIGHT", "100"))
+
+    if max_inflight < 1:
+        raise ValueError("MAX_INFLIGHT must be at least 1")
+
+    request_slots = threading.BoundedSemaphore(max_inflight)
+
     def do_GET(self):
+        if not self.request_slots.acquire(blocking=False):
+            body = b"Load balancer is busy"
+            self.send_response(503)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Retry-After", "1")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        try:
+            self.handle_proxy_request()
+        finally:
+            self.request_slots.release()
+
+
+    def handle_proxy_request(self):
         servers = self.healthy_servers
 
         if not servers:
