@@ -3,10 +3,18 @@ import urllib.request
 import threading
 import time
 import urllib.error
+import os
 
 
 class LoadBalancer(BaseHTTPRequestHandler):
-    servers = ["http://localhost:8081", "http://localhost:8082", "http://localhost:8083"]
+    servers = [
+        address.strip().rstrip("/")
+        for address in os.environ.get(
+            "BACKEND_URLS",
+            "http://localhost:8081, http://localhost:8082, http://localhost:8083",
+        ).split(",")
+        if address.strip()
+    ]
     healthy_servers = servers.copy()
     current = 0
     routing_lock = threading.Lock()
@@ -77,7 +85,7 @@ def health_check():
                     if response.status != 200:
                         raise ValueError("Health check returned a non-200 status")
                 healthy.append(server)                                                                                   
-            except:                                                                                                      
+            except (urllib.error.URLError, TimeoutError, ValueError):                                                                                                      
                 pass
         previous = set(LoadBalancer.healthy_servers)
         current = set(healthy)
