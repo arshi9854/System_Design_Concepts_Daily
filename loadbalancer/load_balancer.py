@@ -67,23 +67,29 @@ class LoadBalancer(BaseHTTPRequestHandler):
         self.wfile.write(b'All servers are down')
 
                                                                                          
-     
-   
-           
-
 
 def health_check():                                                                                                      
-      while True:
-          healthy = []                                                                                                     
-          for server in LoadBalancer.servers:
-              try:
-                  urllib.request.urlopen(server, timeout=2)
-                  healthy.append(server)                                                                                   
-                  print(f"{server} is healthy ✓")
-              except:                                                                                                      
-                  print(f"{server} is down ✗")
-          LoadBalancer.healthy_servers = healthy
-          time.sleep(5)
+    while True:
+        healthy = []                                                                                                     
+        for server in LoadBalancer.servers:
+            try:
+                with urllib.request.urlopen(server + "/healthz", timeout=2) as response:
+                    if response.status != 200:
+                        raise ValueError("Health check returned a non-200 status")
+                healthy.append(server)                                                                                   
+            except:                                                                                                      
+                pass
+        previous = set(LoadBalancer.healthy_servers)
+        current = set(healthy)
+
+        for server in sorted(previous - current):
+            print(f'{server} is down')
+        
+        for server in sorted(current - previous):
+            print(f'{server} is healthy again')
+        
+        LoadBalancer.healthy_servers = healthy
+        time.sleep(5)
 
 
 if __name__ == '__main__':
