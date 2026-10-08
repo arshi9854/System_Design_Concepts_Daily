@@ -1,6 +1,84 @@
 import unittest
 import urllib.error
 import urllib.request
+from pathlib import Path
+import os
+import subprocess
+import sys
+import time
+
+PROCESSES = []
+
+
+def tearDownModule():
+    for process in PROCESSES:
+        if process.poll() is None:
+            process.terminate()
+
+    for process in PROCESSES:
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+    PROCESSES.clear()
+
+def setUpModule():
+    project_dir = Path(__file__).resolve().parents[1]
+    environment = os.environ.copy()
+    environment["BACKEND_URLS"] = (
+        "http://localhost:8081,"
+        "http://localhost:8082,"
+        "http://localhost:8083"
+    )
+
+    commands = [
+        ["server.py", "8081"],
+        ["server.py", "8082"],
+        ["server.py", "8083"],
+        ["load_balancer.py"],
+    ]
+
+    try:
+        for command in commands:
+            PROCESSES.append(
+                subprocess.Popen(
+                    [sys.executable, *command],
+                    cwd=project_dir,
+                    env=environment,
+                )
+            )
+
+        pending = {8080, 8081, 8082, 8083}
+        deadline = time.monotonic() + 10
+
+        while pending:
+            if any(p.poll() is not None for p in PROCESSES):
+                raise RuntimeError("A test server exited during startup")
+
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"Servers did not become ready: {sorted(pending)}"
+                )
+
+            for port in list(pending):
+                try:
+                    with urllib.request.urlopen(
+                        f"http://localhost:{port}/healthz",
+                        timeout=0.5,
+                    ) as response:
+                        if response.status == 200:
+                            pending.remove(port)
+                except (urllib.error.URLError, TimeoutError):
+                    pass
+
+            if pending:
+                time.sleep(0.1)
+
+    except BaseException:
+        tearDownModule()
+        raise
 
 
 class ProxyIntegrationTests(unittest.TestCase):

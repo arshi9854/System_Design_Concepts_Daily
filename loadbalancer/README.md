@@ -22,21 +22,20 @@ Ports 8080–8083 must be available before starting.
 
 ## Automated tests
 
-These integration tests require the load balancer and all three
-backends to be running locally.
-
-Wait until all backends are reported healthy. Avoid sending other
-requests during the tests because the routing test assumes no
-competing traffic.
-
 From the repository root, run:
 
 ```bash
 python3 -m unittest discover -s loadbalancer/tests -p 'test_proxy.py' -v
 ```
 
+The tests automatically start the load balancer and three backends,
+wait for readiness, and stop them afterward.
+
+Ports 8080–8083 must be available. Stop any manually started servers
+or `run_local.py` before running the tests.
+
 The tests verify:
-- Successful responses preserve the expected body, content type,
+- Successful responses include the expected body, content type,
   and content length.
 - Backend 404 responses reach the client correctly.
-- Three consecutive requests visit all three healthy backends
+- Three consecutive requests visit all three healthy backends.
