@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 import subprocess
 import sys
+import socket
 import time
 
 PROCESSES = []
@@ -25,8 +26,19 @@ def tearDownModule():
     PROCESSES.clear()
 
 def setUpModule():
+    for port in (8080, 8081, 8082, 8083):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            try:
+                probe.bind(("127.0.0.1", port))
+            except OSError as error:
+                raise RuntimeError(
+                    f"Port {port} is unavailable. Stop run_local.py "
+                    "and any manually started servers before testing."
+                ) from error
+
     project_dir = Path(__file__).resolve().parents[1]
     environment = os.environ.copy()
+    environment["MAX_INFLIGHT"] = '1'
     environment["BACKEND_URLS"] = (
         "http://localhost:8081,"
         "http://localhost:8082,"
